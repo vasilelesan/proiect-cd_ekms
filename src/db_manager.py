@@ -27,7 +27,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         id_user INTEGER REFERENCES Users(id),
         id_algorithm INTEGER REFERENCES Algorithm(id),
-        key_value BLOB NOT NULL,
+        public_key BLOB,
+        private_key BLOB NOT NULL,
         creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS Framework (
@@ -83,7 +84,7 @@ def register_encrypted_file(file_data):
     cursor = conn.cursor()
     try:
         
-        cursor.execute("INSERT INTO Keys (id_user, id_algorithm, key_value) VALUES (?,?,?)", (file_data['user_id'], file_data['algo_id'], file_data['key_bytes']))
+        cursor.execute("INSERT INTO Keys (id_user, id_algorithm, public_key, private_key) VALUES (?,?,?,?)", (file_data['user_id'], file_data['algo_id'], file_data['public_key_bytes'], file_data['private_key_bytes']))
         key_id = cursor.lastrowid
 
         query_file = """
@@ -149,7 +150,7 @@ def get_file_metadata(file_id):
     conn.row_factory = sqlite3.Row # permit accesul prin numele coloanei
     cursor = conn.cursor()
     query = """
-    SELECT F.*, K.key_value 
+    SELECT F.*, K.public_key, K.private_key
     FROM File F 
     JOIN Keys K ON F.id_key = K.id 
     WHERE F.id =?

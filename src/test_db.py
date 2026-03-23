@@ -12,8 +12,9 @@ print(f"Utilizator creat cu ID: {uid}\n")
 test_file = {
     'user_id': uid,
     'algo_id': algo_id,      
-    'framework_id': fw_id,   
-    'key_bytes': b'\xaf\xfe...', 
+    'framework_id': fw_id,
+    'public_key_bytes': None,
+    'private_key_bytes': b'\xaf\xfe...', 
     'name': 'secret.docx',
     'type': 'docx',
     'size': 50240,
@@ -27,8 +28,9 @@ test_file = {
 test_file2 = {
     'user_id': uid,
     'algo_id': algo_id,      
-    'framework_id': fw_id,   
-    'key_bytes': b'\xaf\xfe...', 
+    'framework_id': fw_id,
+    'public_key_bytes': None,   
+    'private_key_bytes': b'\xaf\xfe...', 
     'name': 'secretx.docx',
     'type': 'docx',
     'size': 60000,
@@ -57,7 +59,8 @@ print(f"\n[UPDATE] Statusul fisierului {fid} a fost actualizat.")
 file_info = db.get_file_metadata(fid)
 if file_info:
     print(f"Verificare: Fisierul {file_info['file_name']} are statusul {file_info['en_status']}")
-    print(f"Cheia recuperata din BLOB: {file_info['key_value'].hex()}")
+    print(f"Public Key (BLOB): {file_info['public_key']}")
+    print(f"Private/Symmetric Key (BLOB): {file_info['private_key'].hex()}")
 
 db.log_test_performance({
     'f_id': fid, 'a_id': algo_id, 'fw_id': fw_id, 
