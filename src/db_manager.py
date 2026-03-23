@@ -109,10 +109,13 @@ def add_algorithm(name, alg_type, key_len, block_dim=None):
     """CREATE: adaugare algoritm."""
     conn = get_connection()
     cursor = conn.cursor()
-    query = """
-        INSERT INTO Algorithm (alg_name, alg_type, key_bit_length, block_bit_dimension) 
-        VALUES (?,?,?,?)
-    """
+    cursor.execute("SELECT id FROM Algorithm WHERE alg_name = ?", (name,))
+    row = cursor.fetchone()
+    if row:
+        conn.close()
+        return row[0]   #returnare id existent
+    
+    query = "INSERT INTO Algorithm (alg_name, alg_type, key_bit_length, block_bit_dimension) VALUES (?,?,?,?)"
     try:
         cursor.execute(query, (name, alg_type, key_len, block_dim))
         algo_id = cursor.lastrowid
@@ -156,6 +159,16 @@ def get_file_metadata(file_id):
     conn.close()
     return row
 
+def get_all_user_files(user_id):
+    """READ: Retunreaza toate fisierele unui user"""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, file_name, en_status, encrypt_date FROM File WHERE id_user = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
 def update_file_status(file_id, new_status):
     """UPDATE: actualizez starea fisierului."""
     conn = get_connection()
@@ -163,6 +176,28 @@ def update_file_status(file_id, new_status):
     cursor.execute("UPDATE File SET en_status =? WHERE id =?", (new_status, file_id))
     conn.commit()
     conn.close()
+
+def delete_file_and_key(file_id):
+    """DELETE: Stergere fisier si cheia asociata acestuia"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM Performance WHERE id_file = ?", (file_id,))
+        cursor.execute("SELECT id_key FROM File WHERE id = ?", (file_id,))
+        res = cursor.fetchone()
+        if res:
+            key_id = res[0]
+            cursor.execute("DELETE FROM File WHERE id = ?", (file_id,))
+            cursor.execute("DELETE FROM Keys WHERE id = ?", (key_id,))
+            conn.commit()
+            return True
+    except sqlite3.Error as e:
+        print(f"Eroare la stergere: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+    return False
+
 
 def log_test_performance(perf_data):
     """CREATE: test."""
