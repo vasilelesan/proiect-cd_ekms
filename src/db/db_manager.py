@@ -1,10 +1,28 @@
 import sqlite3
 
+import os
+import sqlite3
+
 def get_connection():
-    conn = sqlite3.connect('../database/ekms.db')
-    # suport pentru chei externe in SQLitwe
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    # 1. Aflăm unde se află fișierul curent (db_manager.py)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. Construim calea către baza de date plecând de la folderul 'db'
+    # Dacă structura ta este: src/db/db_manager.py și src/database/ekms.db
+    # Atunci mergem un nivel sus (..) și apoi în database
+    db_path = os.path.abspath(os.path.join(current_dir, "..", "database", "ekms.db"))
+    
+    # 3. Ne asigurăm că folderul 'database' există, altfel îl creăm
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
+    # 4. Conectare
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
+    except sqlite3.Error as e:
+        print(f"Eroare la conectarea DB la calea {db_path}: {e}")
+        raise e
 
 def init_db():
     """Creare tabele."""
