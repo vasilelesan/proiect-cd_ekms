@@ -217,6 +217,23 @@ def delete_file_and_key(file_id):
         conn.close()
     return False
 
+def get_performance_report():
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    query = """
+    SELECT F.file_name, A.alg_name, FW.framework_name as fw_name, 
+           P.time_exec_ms as time, P.memory_peak_kb as mem
+    FROM Performance P
+    JOIN File F ON P.id_file = F.id
+    JOIN Algorithm A ON P.id_algorithm = A.id
+    JOIN Framework FW ON P.id_framework = FW.id
+    ORDER BY P.id DESC
+    """
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def log_test_performance(perf_data):
     """CREATE: test."""

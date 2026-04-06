@@ -1,4 +1,5 @@
 import sys
+from wsgiref import headers
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import os
@@ -50,7 +51,7 @@ class CryptoApp(ctk.CTk):
         db.init_db()
         self.render_dashboard()
 
-    # --- LOGICA DE CALCUL HASH (Cerință Proiect) ---
+    # --- hash compute ---
     def get_file_hash(self, path):
         sha256_hash = hashlib.sha256()
         with open(path, "rb") as f:
@@ -58,30 +59,37 @@ class CryptoApp(ctk.CTk):
                 sha256_hash.update(byte_block)
         return sha256_hash.digest()
 
-    # --- PAGINA: DASHBOARD (LISTA FISIERE) ---
+    # --- PAGINA: DASHBOARD  ---
     def render_dashboard(self):
         for widget in self.main_view.winfo_children():
             widget.destroy()
 
-        ctk.CTkLabel(self.main_view, text="Management Fișiere & Performanță", font=("Arial", 22, "bold")).pack(pady=15)
-        
-        # Folosim id_user = 1 (Vasile) pentru test
-        files = db.get_all_user_files(1)
-        
-        if not files:
-            ctk.CTkLabel(self.main_view, text="Niciun fișier criptat momentan.", text_color="gray").pack(pady=20)
-            return
+        ctk.CTkLabel(self.main_view, text="Analiză Performanță Criptare", font=("Arial", 22, "bold")).pack(pady=15)
+    
+        # Cap de tabel (Header)
+        header_frame = ctk.CTkFrame(self.main_view, fg_color="gray20")
+        header_frame.pack(fill="x", pady=5, padx=10)
+    
+        headers = ["Fișier", "Algoritm", "Framework", "Timp (ms)", "Memorie (KB)"]
+        for i, h in enumerate(headers):
+            ctk.CTkLabel(header_frame, text=h, font=("Arial", 12, "bold"), width=150).grid(row=0, column=i, padx=5, pady=5)
 
-        for f in files:
-            row = ctk.CTkFrame(self.main_view, fg_color="#2b2b2b")
-            row.pack(fill="x", pady=5, padx=10)
-            
-            txt = f"ID: {f['id']} | {f['file_name']} | Status: {f['en_status']}"
-            ctk.CTkLabel(row, text=txt, font=("Consolas", 12)).pack(side="left", padx=15, pady=10)
-            
-            btn_del = ctk.CTkButton(row, text="Șterge", fg_color="#a83232", hover_color="#7a2424", width=80,
-                                    command=lambda fid=f['id']: self.handle_delete(fid))
-            btn_del.pack(side="right", padx=10)
+        # Luăm datele din DB printr-un JOIN între Performance, File, Algorithm și Framework
+        # Va trebui să adaugi o funcție în db_manager numită get_all_performance_logs()
+        logs = db.get_performance_report() 
+
+        for log in logs:
+            row = ctk.CTkFrame(self.main_view)
+            row.pack(fill="x", pady=2, padx=10)
+        
+            # Culori diferite pentru Framework-uri diferite (ca să bată la ochi comparația)
+            color = "#1f538d" if log['fw_name'] == "OpenSSL" else "#1f8d53"
+        
+            ctk.CTkLabel(row, text=log['file_name'], width=150).grid(row=0, column=0)
+            ctk.CTkLabel(row, text=log['alg_name'], width=150).grid(row=0, column=1)
+            ctk.CTkLabel(row, text=log['fw_name'], width=150, text_color=color).grid(row=0, column=2)
+            ctk.CTkLabel(row, text=f"{log['time']:.2f}", width=150).grid(row=0, column=3)
+            ctk.CTkLabel(row, text=f"{log['mem']:.0f}", width=150).grid(row=0, column=4)
 
     # --- PAGINA: FORMULAR CRIPTARE ---
     def render_encrypt_form(self):
@@ -90,18 +98,18 @@ class CryptoApp(ctk.CTk):
 
         ctk.CTkLabel(self.main_view, text="Configurare Criptare OpenSSL", font=("Arial", 22, "bold")).pack(pady=20)
 
-        # Selecție Fișier
+        # Selectie Fisier
         self.btn_select = ctk.CTkButton(self.main_view, text="1. Selectează Fișier", command=self.handle_file_select)
         self.btn_select.pack(pady=10)
         self.lbl_file = ctk.CTkLabel(self.main_view, text="Niciun fișier ales", text_color="gray")
         self.lbl_file.pack()
 
-        # Selecție Algoritm
+        # Selectie Algoritm
         ctk.CTkLabel(self.main_view, text="2. Alege Algoritm:").pack(pady=(20, 5))
         self.algo_menu = ctk.CTkOptionMenu(self.main_view, values=["aes-256-cbc", "aes-128-cbc"])
         self.algo_menu.pack()
 
-        # Buton Execuție
+        # Buton Executie
         self.btn_run = ctk.CTkButton(self.main_view, text="EXECUTE OPENSSL", fg_color="#1f538d", 
                                      height=50, font=("Arial", 16, "bold"), command=self.handle_encryption)
         self.btn_run.pack(pady=50)
@@ -121,13 +129,13 @@ class CryptoApp(ctk.CTk):
             messagebox.showwarning("Eroare", "Te rog selectează un fișier!")
             return
 
-        # 1. Inițializare date
+        # 1. Initializare date
         key_hex = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4" # Cheie 256-bit test
         iv_hex = "00112233445566778899aabbccddeeff"
         out_path = self.selected_file_path + ".enc"
         algo_name = self.algo_menu.get()
         
-        # Pregătim IDs (în mod normal le iei din tabelele Algorithm/Framework)
+        # Pregatim IDs 
         # Pentru test folosim IDs create de tine anterior
         aid = db.add_algorithm(algo_name, "Symmetric", 256, 128)
         fwid = db.register_framework("OpenSSL", "3.0.x")
@@ -141,7 +149,7 @@ class CryptoApp(ctk.CTk):
             "-in", self.selected_file_path, "-out", out_path, "-nosalt"
         ]
 
-        # 4. Măsurare PERFORMANȚĂ
+        # 4. Masurare PERFORMANTA
         start_t = time.perf_counter()
         mem_start = psutil.Process().memory_info().rss
         
