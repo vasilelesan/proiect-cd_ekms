@@ -40,6 +40,9 @@ class CryptoApp(ctk.CTk):
         self.btn_encrypt = ctk.CTkButton(self.sidebar, text="Criptare Nouă (OpenSSL)", command=self.render_encrypt_form)
         self.btn_encrypt.pack(pady=10, padx=20)
 
+        self.btn_decrypt = ctk.CTkButton(self.sidebar, text="Decriptare (OpenSSL)", command=self.render_decrypt_form)
+        self.btn_decrypt.pack(pady=10, padx=20)
+
         # containerul principal pentru continut
         self.main_view = ctk.CTkScrollableFrame(self, corner_radius=15, fg_color="transparent")
         self.main_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
@@ -65,12 +68,12 @@ class CryptoApp(ctk.CTk):
             widget.destroy()
 
         ctk.CTkLabel(self.main_view, text="Analiză Performanță Criptare", font=("Arial", 22, "bold")).pack(pady=15)
-    
+        col_widths = [150, 150, 150, 150, 150, 150, 150]
         # cap de tabel (header)
         header_frame = ctk.CTkFrame(self.main_view, fg_color="gray20")
         header_frame.pack(fill="x", pady=5, padx=10)
     
-        headers = ["Fișier", "Algoritm", "Framework", "Timp (ms)", "Memorie (KB)"]
+        headers = ["Fișier", "Algoritm", "Framework", "Operatie", "Cheie (Hex)", "Timp (ms)", "Memorie (KB)"]
         for i, h in enumerate(headers):
             ctk.CTkLabel(header_frame, text=h, font=("Arial", 12, "bold"), width=150).grid(row=0, column=i, padx=5, pady=5)
 
@@ -82,14 +85,24 @@ class CryptoApp(ctk.CTk):
             row = ctk.CTkFrame(self.main_view)
             row.pack(fill="x", pady=2, padx=10)
         
-            # culori diferite pentru frameworkuri diferite
-            color = "#1f538d" if log['fw_name'] == "OpenSSL" else "#1f8d53"
+            # color based on operation
+            color = "#1fbd1f" if "Criptare" in log['operation_type'] else "#e67e22"
+
+            full_key_hex = log['private_key'].hex()
+            key_snippet = f"{full_key_hex[:8]}..."
         
-            ctk.CTkLabel(row, text=log['file_name'], width=150).grid(row=0, column=0)
-            ctk.CTkLabel(row, text=log['alg_name'], width=150).grid(row=0, column=1)
-            ctk.CTkLabel(row, text=log['fw_name'], width=150, text_color=color).grid(row=0, column=2)
-            ctk.CTkLabel(row, text=f"{log['time']:.2f}", width=150).grid(row=0, column=3)
-            ctk.CTkLabel(row, text=f"{log['mem']:.0f}", width=150).grid(row=0, column=4)
+            # place elements matching header widths and paddings exactly
+            ctk.CTkLabel(row, text=log['file_name'], width=col_widths[0]).grid(row=0, column=0, padx=5, pady=5)
+            ctk.CTkLabel(row, text=log['alg_name'], width=col_widths[1]).grid(row=0, column=1, padx=5, pady=5)
+            ctk.CTkLabel(row, text=log['fw_name'], width=col_widths[2]).grid(row=0, column=2, padx=5, pady=5)
+            ctk.CTkLabel(row, text=log['operation_type'], width=col_widths[3], text_color=color).grid(row=0, column=3, padx=5, pady=5)
+            
+            # clickable button for full key
+            btn_key = ctk.CTkButton(row, text=key_snippet, width=col_widths[4], fg_color="transparent", border_width=1, text_color="white", hover_color="gray30", command=lambda k=full_key_hex: messagebox.showinfo("Cheie Completa", k))
+            btn_key.grid(row=0, column=4, padx=5, pady=5)
+            
+            ctk.CTkLabel(row, text=f"{log['time']:.2f}", width=col_widths[5]).grid(row=0, column=5, padx=5, pady=5)
+            ctk.CTkLabel(row, text=f"{log['mem']:.0f}", width=col_widths[6]).grid(row=0, column=6, padx=5, pady=5)
 
     # --- MOD DE SELECTARE A CHEII DE CRIPTARE ---
     def update_key_ui(self):
@@ -284,6 +297,105 @@ class CryptoApp(ctk.CTk):
             })
 
             messagebox.showinfo("Succes", f"Fișier criptat!\nTimp: {exec_ms:.2f}ms\nMemorie: {mem_kb:.2f}KB")
+            self.render_dashboard()
+        else:
+            messagebox.showerror("Eroare OpenSSL", result.stderr)
+
+    # --- PAGINA: FORMULAR DECRIPTARE ---
+    def render_decrypt_form(self):
+        for widget in self.main_view.winfo_children():
+            widget.destroy()
+
+        ctk.CTkLabel(self.main_view, text="Decriptare Fisiere OpenSSL", font=("Arial", 22, "bold")).pack(pady=20)
+
+        ctk.CTkLabel(self.main_view, text="1. Alege un fisier din baza de date:").pack(pady=(20, 5))
+
+        # incarcam doar fisierele criptate
+        enc_files = db.get_encrypted_files()
+        self.enc_file_dict = {}
+        for f in enc_files:
+            display_name = f"ID: {f['id']} - {f['file_name']}"
+            self.enc_file_dict[display_name] = f['id']
+
+        file_list = list(self.enc_file_dict.keys()) if self.enc_file_dict else ["Nu exista fisiere criptate"]
+        self.dec_file_menu = ctk.CTkOptionMenu(self.main_view, values=file_list, width=300)
+        self.dec_file_menu.pack(pady=10)
+
+        # buton de decriptare
+        self.btn_run_dec = ctk.CTkButton(self.main_view, text="EXECUTE DECRYPT", fg_color="#1f8d53", height=50, font=("Arial", 16, "bold"), command=self.handle_decryption)
+        self.btn_run_dec.pack(pady=50)
+
+    # --- LOGICA DE DECRIPTARE ---
+    def handle_decryption(self):
+        selected_option = self.dec_file_menu.get()
+        if selected_option == "Nu exista fisiere criptate":
+            messagebox.showwarning("Eroare", "Nu ai fisiere criptate in DB de decriptat!")
+            return
+
+        # 1. preluam id-ul fisierului si extragem metadatele
+        file_id = self.enc_file_dict[selected_option]
+        meta = db.get_file_metadata(file_id)
+
+        if not meta:
+            messagebox.showerror("Eroare", "Nu s-au putut extrage metadatele din baza de date.")
+            return
+
+        # 2. pregatire variabile pentru openssl
+        alg_name = meta['alg_name']
+        key_hex = meta['private_key'].hex()
+        iv_hex = meta['init_vector'].hex()
+        in_path = meta['file_path']
+        
+        # formatam fisierul de iesire (scoatem .enc si punem _decrypted)
+        #out_path = in_path.replace(".enc", "") + "_decrypted.txt"
+        base_path = in_path.replace(".enc", "")
+        
+        # split file name and extension (e.g., "doc", ".pdf")
+        name, ext = os.path.splitext(base_path)
+        
+        # build final path keeping original format
+        out_path = f"{name}_decrypted{ext}"
+
+        if not os.path.exists(in_path):
+            messagebox.showerror("Eroare", f"Fisierul fizic nu mai exista la calea:\n{in_path}")
+            return
+
+        # 3. comanda openssl (atentie la flag-ul -d care inseamna decrypt)
+        command = [
+            OPENSSL_EXE, "enc", "-d", f"-{alg_name}", "-K", key_hex, "-iv", iv_hex,
+            "-in", in_path, "-out", out_path, "-nosalt"
+        ]
+
+        # 4. masurare performanta
+        start_t = time.perf_counter()
+        mem_start = psutil.Process().memory_info().rss
+        
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        end_t = time.perf_counter()
+        mem_end = psutil.Process().memory_info().rss
+
+        if result.returncode == 0:
+            exec_ms = (end_t - start_t) * 1000
+            mem_kb = abs(mem_end - mem_start) / 1024
+
+            # 5. VERIFICARE INTEGRITATE (Hash)
+            new_hash = self.get_file_hash(out_path)
+            orig_hash = meta['original_hash']
+            
+            if new_hash == orig_hash:
+                integrity_msg = "INTEGRITATE CONFIRMATA: Hash-ul se potriveste!"
+            else:
+                integrity_msg = "AVERTISMENT INTEGRITATE: Hash-ul NU se potriveste! Fisierul a fost alterat."
+
+            # 6. update status in DB si logare performanta
+            #db.update_file_status(file_id, 'Decrypted')
+            db.log_test_performance({
+                'f_id': file_id, 'a_id': meta['id_algorithm'], 'fw_id': meta['id_framework'],
+                'op': 'Decriptare OpenSSL', 'time': exec_ms, 'mem': mem_kb
+            })
+
+            messagebox.showinfo("Succes Decriptare", f"Fisier decriptat cu succes!\n\n{integrity_msg}\n\nTimp: {exec_ms:.2f}ms\nMemorie: {mem_kb:.2f}KB")
             self.render_dashboard()
         else:
             messagebox.showerror("Eroare OpenSSL", result.stderr)

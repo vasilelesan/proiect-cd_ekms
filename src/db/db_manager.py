@@ -10,7 +10,15 @@ def get_connection():
     # 2. Construim calea către baza de date plecând de la folderul 'db'
     # Dacă structura ta este: src/db/db_manager.py și src/database/ekms.db
     # Atunci mergem un nivel sus (..) și apoi în database
-    db_path = os.path.abspath(os.path.join(current_dir, "..", "database", "ekms.db"))
+    #db_path = os.path.abspath(os.path.join(current_dir, "..", ".." "database", "ekms.db"))
+    # go up to 'src'
+    src_dir = os.path.dirname(current_dir)
+    
+    # go up to project root
+    root_dir = os.path.dirname(src_dir)
+    
+    # build path to database folder
+    db_path = os.path.join(root_dir, "database", "ekms.db")
     
     # 3. initializare director database
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -81,6 +89,12 @@ def init_db():
     );
     """
     conn.executescript(sql_script)
+    # create default user if table is empty
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM Users")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO Users (id, user_name, hash_password) VALUES (1, 'admin', 'dummy_hash')")
+        conn.commit()
     conn.close()
 
 # opratii CRUD
@@ -165,18 +179,29 @@ def register_framework(name, version):
 def get_file_metadata(file_id):
     """READ: extrage metadate necesare pentru decriptare."""
     conn = get_connection()
-    conn.row_factory = sqlite3.Row # permit accesul prin numele coloanei
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     query = """
-    SELECT F.*, K.public_key, K.private_key
+    SELECT F.*, K.public_key, K.private_key, K.id_algorithm, A.alg_name
     FROM File F 
     JOIN Keys K ON F.id_key = K.id 
+    JOIN Algorithm A ON K.id_algorithm = A.id
     WHERE F.id =?
     """
     cursor.execute(query, (file_id,))
     row = cursor.fetchone()
     conn.close()
     return row
+
+def get_encrypted_files():
+    """READ: returneaza doar fisierele care sunt criptate pentru a popula dropdown-ul."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, file_name FROM File WHERE en_status = 'Encrypted'")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def get_all_user_files(user_id):
     """READ: Retunreaza toate fisierele unui user"""
@@ -222,12 +247,14 @@ def get_performance_report():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     query = """
-    SELECT F.file_name, A.alg_name, FW.framework_name as fw_name, 
+    SELECT F.file_name, A.alg_name, FW.framework_name as fw_name, P.operation_type, K.private_key,
            P.time_exec_ms as time, P.memory_peak_kb as mem
+           
     FROM Performance P
     JOIN File F ON P.id_file = F.id
     JOIN Algorithm A ON P.id_algorithm = A.id
     JOIN Framework FW ON P.id_framework = FW.id
+    JOIN Keys K ON F.id_key = K.id
     ORDER BY P.id DESC
     """
     cursor.execute(query)
