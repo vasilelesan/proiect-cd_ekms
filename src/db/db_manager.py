@@ -4,7 +4,7 @@ import os
 import sqlite3
 
 def get_connection():
-    # 1. Aflăm unde se află fișierul curent (db_manager.py)
+    # 1. exatregere cale pentu fisierul curent (db_manager.py)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 2. Construim calea către baza de date plecând de la folderul 'db'
@@ -12,10 +12,10 @@ def get_connection():
     # Atunci mergem un nivel sus (..) și apoi în database
     db_path = os.path.abspath(os.path.join(current_dir, "..", "database", "ekms.db"))
     
-    # 3. Ne asigurăm că folderul 'database' există, altfel îl creăm
+    # 3. initializare director database
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
-    # 4. Conectare
+    # 4. conectare la baza de date
     try:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -247,3 +247,14 @@ def log_test_performance(perf_data):
                            perf_data['op'], perf_data['time'], perf_data['mem']))
     conn.commit()
     conn.close()
+
+def get_all_keys():
+    """get all saved keys from db."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    # fetch id and private_key
+    cursor.execute("SELECT id, private_key FROM Keys")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows

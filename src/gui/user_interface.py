@@ -8,11 +8,11 @@ import psutil
 import subprocess
 import hashlib
 
-# Importăm logica ta de DB
-sys.path.append(os.path.abspath("../db"))
-import db_manager as db 
+# Import logica de DB
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from db import db_manager as db 
 
-# CONFIGURARE CALE OPENSSL (Calea ta specifică)
+# CONFIGURARE CALE OPENSSL 
 OPENSSL_EXE = r"C:\Program Files\OpenSSL-Win64\bin\openssl.exe"
 
 class CryptoApp(ctk.CTk):
@@ -23,11 +23,11 @@ class CryptoApp(ctk.CTk):
         self.geometry("1100x600")
         ctk.set_appearance_mode("dark")
         
-        # Layout principal
+        # layout principal
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+        # sidebar
         self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
@@ -40,14 +40,14 @@ class CryptoApp(ctk.CTk):
         self.btn_encrypt = ctk.CTkButton(self.sidebar, text="Criptare Nouă (OpenSSL)", command=self.render_encrypt_form)
         self.btn_encrypt.pack(pady=10, padx=20)
 
-        # Containerul principal pentru conținut
+        # containerul principal pentru continut
         self.main_view = ctk.CTkScrollableFrame(self, corner_radius=15, fg_color="transparent")
         self.main_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
         # Variabile de stare
         self.selected_file_path = ""
         
-        # Inițializăm DB și încărcăm prima pagină
+        # initializez DB si incarc prima pagina
         db.init_db()
         self.render_dashboard()
 
@@ -66,7 +66,7 @@ class CryptoApp(ctk.CTk):
 
         ctk.CTkLabel(self.main_view, text="Analiză Performanță Criptare", font=("Arial", 22, "bold")).pack(pady=15)
     
-        # Cap de tabel (Header)
+        # cap de tabel (header)
         header_frame = ctk.CTkFrame(self.main_view, fg_color="gray20")
         header_frame.pack(fill="x", pady=5, padx=10)
     
@@ -74,7 +74,7 @@ class CryptoApp(ctk.CTk):
         for i, h in enumerate(headers):
             ctk.CTkLabel(header_frame, text=h, font=("Arial", 12, "bold"), width=150).grid(row=0, column=i, padx=5, pady=5)
 
-        # Luăm datele din DB printr-un JOIN între Performance, File, Algorithm și Framework
+        # preiau datele din DB printr-un JOIN intre Performance, File, Algorithm si Framework
         # Va trebui să adaugi o funcție în db_manager numită get_all_performance_logs()
         logs = db.get_performance_report() 
 
@@ -82,7 +82,7 @@ class CryptoApp(ctk.CTk):
             row = ctk.CTkFrame(self.main_view)
             row.pack(fill="x", pady=2, padx=10)
         
-            # Culori diferite pentru Framework-uri diferite (ca să bată la ochi comparația)
+            # culori diferite pentru frameworkuri diferite
             color = "#1f538d" if log['fw_name'] == "OpenSSL" else "#1f8d53"
         
             ctk.CTkLabel(row, text=log['file_name'], width=150).grid(row=0, column=0)
@@ -91,6 +91,27 @@ class CryptoApp(ctk.CTk):
             ctk.CTkLabel(row, text=f"{log['time']:.2f}", width=150).grid(row=0, column=3)
             ctk.CTkLabel(row, text=f"{log['mem']:.0f}", width=150).grid(row=0, column=4)
 
+    # --- MOD DE SELECTARE A CHEII DE CRIPTARE ---
+    def update_key_ui(self):
+        # get selected mode
+        mode = self.key_source_var.get()
+        
+        if mode == "auto":
+            # generarea automata a cheii - dezactivez celelalte moduri
+            self.db_key_menu.configure(state="disabled")
+            self.key_entry.configure(state="disabled")
+            self.key_entry.delete(0, 'end')
+        elif mode == "db":
+            # selectare cheie din db -> dezactivez inputul userului
+            if self.key_dict:
+                self.db_key_menu.configure(state="normal")
+            self.key_entry.configure(state="disabled")
+            self.key_entry.delete(0, 'end')
+        elif mode == "manual":
+            # introducere manuala a cheii utilizatorului
+            self.db_key_menu.configure(state="disabled")
+            self.key_entry.configure(state="normal")
+
     # --- PAGINA: FORMULAR CRIPTARE ---
     def render_encrypt_form(self):
         for widget in self.main_view.winfo_children():
@@ -98,20 +119,57 @@ class CryptoApp(ctk.CTk):
 
         ctk.CTkLabel(self.main_view, text="Configurare Criptare OpenSSL", font=("Arial", 22, "bold")).pack(pady=20)
 
-        # Selectie Fisier
+        # selectie fisier
         self.btn_select = ctk.CTkButton(self.main_view, text="1. Selectează Fișier", command=self.handle_file_select)
         self.btn_select.pack(pady=10)
         self.lbl_file = ctk.CTkLabel(self.main_view, text="Niciun fișier ales", text_color="gray")
         self.lbl_file.pack()
 
-        # Selectie Algoritm
+        # selectie algoritm
         ctk.CTkLabel(self.main_view, text="2. Alege Algoritm:").pack(pady=(20, 5))
         self.algo_menu = ctk.CTkOptionMenu(self.main_view, values=["aes-256-cbc", "aes-128-cbc"])
         self.algo_menu.pack()
 
-        # Buton Executie
-        self.btn_run = ctk.CTkButton(self.main_view, text="EXECUTE OPENSSL", fg_color="#1f538d", 
-                                     height=50, font=("Arial", 16, "bold"), command=self.handle_encryption)
+        # selectare cheie deja existenta in db
+        ctk.CTkLabel(self.main_view, text="3. Sursa cheiei de criptare:").pack(pady=(20, 5))
+        
+        # tracking variable for radio buttons
+        self.key_source_var = ctk.StringVar(value="auto")
+
+        # frame to align radio buttons horizontally
+        radio_frame = ctk.CTkFrame(self.main_view, fg_color="transparent")
+        radio_frame.pack(pady=5)
+
+        self.rb_auto = ctk.CTkRadioButton(radio_frame, text="Generare automata", variable=self.key_source_var, value="auto", command=self.update_key_ui)
+        self.rb_auto.grid(row=0, column=0, padx=10)
+
+        self.rb_db = ctk.CTkRadioButton(radio_frame, text="Din baza de date", variable=self.key_source_var, value="db", command=self.update_key_ui)
+        self.rb_db.grid(row=0, column=1, padx=10)
+
+        self.rb_manual = ctk.CTkRadioButton(radio_frame, text="Introducere manuala", variable=self.key_source_var, value="manual", command=self.update_key_ui)
+        self.rb_manual.grid(row=0, column=2, padx=10)
+
+        # db key dropdown
+        keys = db.get_all_keys()
+        self.key_dict = {}
+        for k in keys:
+            key_hex = k['private_key'].hex()
+            display_name = f"ID: {k['id']} ({key_hex[:8]}...)"
+            self.key_dict[display_name] = key_hex
+
+        db_keys_list = list(self.key_dict.keys()) if self.key_dict else ["Fara chei in DB"]
+        self.db_key_menu = ctk.CTkOptionMenu(self.main_view, values=db_keys_list)
+        self.db_key_menu.pack(pady=10)
+
+        # manual key entry
+        self.key_entry = ctk.CTkEntry(self.main_view, width=300, placeholder_text="ex: 603deb1015ca...")
+        self.key_entry.pack(pady=5)
+
+        # set initial ui state
+        self.update_key_ui()
+
+        # buton de executie
+        self.btn_run = ctk.CTkButton(self.main_view, text="EXECUTE OPENSSL", fg_color="#1f538d", height=50, font=("Arial", 16, "bold"), command=self.handle_encryption)
         self.btn_run.pack(pady=50)
 
     def handle_file_select(self):
@@ -129,27 +187,62 @@ class CryptoApp(ctk.CTk):
             messagebox.showwarning("Eroare", "Te rog selectează un fișier!")
             return
 
-        # 1. Initializare date
-        key_hex = "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4" # Cheie 256-bit test
-        iv_hex = "00112233445566778899aabbccddeeff"
+        # 1. initializare date
+        # preluare algoritm
+        algo_name = self.algo_menu.get()   
+        mode = self.key_source_var.get() 
+
+        # preluare cheie/generare cheie
+        # selected_key_option = self.db_key_menu.get()
+        # if selected_key_option != "Cheie Noua (Generare)":
+        #     key_hex = self.key_dict[selected_key_option]
+        # else:
+        #     user_key = self.key_entry.get().strip()
+        #     if not user_key:
+        #         key_bytes = 32 if "256" in algo_name else 16
+        #         user_key = os.urandom(key_bytes).hex()
+        #     key_hex = user_key
+        if mode == "auto":
+            # generate random key
+            key_bytes = 32 if "256" in algo_name else 16
+            key_hex = os.urandom(key_bytes).hex()
+            
+        elif mode == "db":
+            # extract key from db dropdown
+            selected_key_option = self.db_key_menu.get()
+            if selected_key_option == "Fara chei in DB":
+                messagebox.showwarning("Eroare", "Nu exista chei in baza de date!")
+                return
+            key_hex = self.key_dict[selected_key_option]
+            
+        elif mode == "manual":
+            # read user input
+            key_hex = self.key_entry.get().strip()
+            if not key_hex:
+                messagebox.showwarning("Eroare", "Te rog introdu o cheie!")
+                return
+            # optional: check key length based on algorithm here
+
+        # generare vector de initializare
+        iv_hex = os.urandom(16).hex()
         out_path = self.selected_file_path + ".enc"
-        algo_name = self.algo_menu.get()
         
-        # Pregatim IDs 
+        # pregatesc IDs 
         # Pentru test folosim IDs create de tine anterior
-        aid = db.add_algorithm(algo_name, "Symmetric", 256, 128)
+        key_bit_len = 256 if "256" in algo_name else 128
+        aid = db.add_algorithm(algo_name, "Symmetric", key_bit_len, 128)
         fwid = db.register_framework("OpenSSL", "3.0.x")
 
-        # 2. Calcul Hash Original
+        # 2. calcul hash original
         orig_hash = self.get_file_hash(self.selected_file_path)
 
-        # 3. Comanda OpenSSL
+        # 3. comanda OpenSSL
         command = [
             OPENSSL_EXE, "enc", f"-{algo_name}", "-K", key_hex, "-iv", iv_hex,
             "-in", self.selected_file_path, "-out", out_path, "-nosalt"
         ]
 
-        # 4. Masurare PERFORMANTA
+        # 4.masurare performanta
         start_t = time.perf_counter()
         mem_start = psutil.Process().memory_info().rss
         
@@ -160,12 +253,12 @@ class CryptoApp(ctk.CTk):
 
         if result.returncode == 0:
             exec_ms = (end_t - start_t) * 1000
-            mem_kb = (mem_end - mem_start) / 1024
+            mem_kb = abs(mem_end - mem_start) / 1024
 
-            # 5. Calcul Hash Criptat
+            # 5. calcul hash criptat
             enc_hash = self.get_file_hash(out_path)
 
-            # 6. Salvare în DB prin funcția ta
+            # 6. salvare in DB prin fucntie
             file_data = {
                 'user_id': 1,
                 'algo_id': aid,
@@ -184,7 +277,7 @@ class CryptoApp(ctk.CTk):
             
             fid = db.register_encrypted_file(file_data)
             
-            # Log Performanță
+            # log performanta
             db.log_test_performance({
                 'f_id': fid, 'a_id': aid, 'fw_id': fwid,
                 'op': 'Criptare OpenSSL', 'time': exec_ms, 'mem': mem_kb
@@ -198,8 +291,3 @@ class CryptoApp(ctk.CTk):
 if __name__ == "__main__":
     app = CryptoApp()
     app.mainloop()
-
-
-
-
-
