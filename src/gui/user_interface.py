@@ -91,6 +91,9 @@ class CryptoApp(ctk.CTk):
             row = ctk.CTkFrame(self.main_view)
             row.pack(fill="x", pady=2, padx=10)
         
+            raw_op = log['operation_type']
+            display_op = "Criptare" if "Criptare" in raw_op else "Decriptare"
+
             # color based on operation
             color = "#1fbd1f" if "Criptare" in log['operation_type'] else "#e67e22"
 
@@ -101,7 +104,7 @@ class CryptoApp(ctk.CTk):
             ctk.CTkLabel(row, text=log['file_name'], width=col_widths[0]).grid(row=0, column=0, padx=5, pady=5)
             ctk.CTkLabel(row, text=log['alg_name'], width=col_widths[1]).grid(row=0, column=1, padx=5, pady=5)
             ctk.CTkLabel(row, text=log['fw_name'], width=col_widths[2]).grid(row=0, column=2, padx=5, pady=5)
-            ctk.CTkLabel(row, text=log['operation_type'], width=col_widths[3], text_color=color).grid(row=0, column=3, padx=5, pady=5)
+            ctk.CTkLabel(row, text=display_op, width=col_widths[3], text_color=color).grid(row=0, column=3, padx=5, pady=5)
             
             # clickable button for full key
             btn_key = ctk.CTkButton(row, text=key_snippet, width=col_widths[4], fg_color="transparent", border_width=1, text_color="white", hover_color="gray30", command=lambda k=full_key_hex: messagebox.showinfo("Cheie Completa", k))
@@ -365,7 +368,7 @@ class CryptoApp(ctk.CTk):
             
             db.log_test_performance({
                 'f_id': fid, 'a_id': aid, 'fw_id': fwid,
-                'op': f'Criptare {selected_fw}', 'time': exec_ms, 'mem': mem_kb
+                'op': f'Criptare', 'time': exec_ms, 'mem': mem_kb
             })
 
             messagebox.showinfo("Succes", f"Fisier criptat cu {selected_fw}!\nTimp: {exec_ms:.2f}ms\nMemorie: {mem_kb:.2f}KB")
@@ -408,7 +411,7 @@ class CryptoApp(ctk.CTk):
             messagebox.showwarning("Eroare", "Nu ai fisiere criptate in DB de decriptat!")
             return
 
-        # 1. preluam id-ul fisierului si extragem metadatele
+        # 1. preiau id-ul fisierului si extrag metadatele
         file_id = self.enc_file_dict[selected_option]
         meta = db.get_file_metadata(file_id)
 
@@ -422,7 +425,7 @@ class CryptoApp(ctk.CTk):
         in_path = meta['file_path']
         is_rsa = "rsa" in alg_name.lower()
         
-        # formatam fisierul de iesire
+        # formatez fisierul de iesire
         base_path = in_path.replace(".enc", "")
         name, ext = os.path.splitext(base_path)
         out_path = f"{name}_decrypted{ext}"
@@ -507,7 +510,7 @@ class CryptoApp(ctk.CTk):
 
             db.log_test_performance({
                 'f_id': file_id, 'a_id': meta['id_algorithm'], 'fw_id': fwid,
-                'op': f'Decriptare {selected_fw}', 'time': exec_ms, 'mem': mem_kb
+                'op': f'Decriptare', 'time': exec_ms, 'mem': mem_kb
             })
 
             messagebox.showinfo("Succes", f"Fisier decriptat cu {selected_fw}!\n\n{integrity_msg}\nTimp: {exec_ms:.2f}ms\nMemorie: {mem_kb:.2f}KB")
