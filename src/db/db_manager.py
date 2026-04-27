@@ -276,12 +276,12 @@ def log_test_performance(perf_data):
     conn.close()
 
 def get_all_keys():
-    """get all saved keys from db."""
+    """Returnarea tuturor cheilor de criptare salvate in DB."""
     conn = get_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     # fetch id and private_key
-    cursor.execute("SELECT id, private_key FROM Keys")
+    cursor.execute("SELECT id, private_key, public_key FROM Keys")
     rows = cursor.fetchall()
     conn.close()
     return rows
