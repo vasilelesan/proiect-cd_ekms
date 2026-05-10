@@ -1,0 +1,1 @@
+OPENSSL_EXE = r"C:\Program Files\OpenSSL-Win64\bin\openssl.exe"

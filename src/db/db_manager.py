@@ -32,6 +32,16 @@ def get_connection():
         print(f"Eroare la conectarea DB la calea {db_path}: {e}")
         raise e
 
+def add_column_if_not_exists(conn, table_name, column_name, column_definition):
+    cursor = conn.cursor()
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if column_name not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
 def init_db():
     """Creare tabele."""
     conn = get_connection()
@@ -90,12 +100,23 @@ def init_db():
     """
     conn.executescript(sql_script)
     # create default user if table is empty
+    add_column_if_not_exists(conn, "File", "original_dimension", "INTEGER")
+    add_column_if_not_exists(conn, "File", "encrypted_dimension", "INTEGER")
+    add_column_if_not_exists(conn, "File", "decrypted_dimension", "INTEGER")
+
+    add_column_if_not_exists(conn, "Performance", "input_bytes", "INTEGER")
+    add_column_if_not_exists(conn, "Performance", "output_bytes", "INTEGER")
+    add_column_if_not_exists(conn, "Performance", "time_per_byte", "REAL")
+    add_column_if_not_exists(conn, "Performance", "memory_per_byte", "REAL")
+
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM Users")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO Users (id, user_name, hash_password) VALUES (1, 'admin', 'dummy_hash')")
         conn.commit()
     conn.close()
+
+
 
 # opratii CRUD
 
@@ -114,27 +135,74 @@ def register_encrypted_file(file_data):
     """CREATE: salveaza metadatele fisierului si cheia asociata."""
     conn = get_connection()
     cursor = conn.cursor()
+
     try:
-        
-        cursor.execute("INSERT INTO Keys (id_user, id_algorithm, public_key, private_key) VALUES (?,?,?,?)", (file_data['user_id'], file_data['algo_id'], file_data['public_key_bytes'], file_data['private_key_bytes']))
+        cursor.execute(
+            """
+            INSERT INTO Keys 
+            (id_user, id_algorithm, public_key, private_key) 
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                file_data["user_id"],
+                file_data["algo_id"],
+                file_data["public_key_bytes"],
+                file_data["private_key_bytes"]
+            )
+        )
+
         key_id = cursor.lastrowid
 
         query_file = """
-        INSERT INTO File (id_key, id_user, id_framework, file_name, file_type, dimension, 
-                          file_path, en_status, original_hash, encrypted_hash, integrity_payload, init_vector)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO File (
+            id_key,
+            id_user,
+            id_framework,
+            file_name,
+            file_type,
+            dimension,
+            original_dimension,
+            encrypted_dimension,
+            decrypted_dimension,
+            file_path,
+            en_status,
+            original_hash,
+            encrypted_hash,
+            integrity_payload,
+            init_vector
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (key_id, file_data['user_id'], file_data['framework_id'], file_data['name'], 
-                  file_data['type'], file_data['size'], file_data['path'], 'Encrypted',
-                  file_data['orig_hash'], file_data['enc_hash'], file_data['payload'], file_data['iv'])
-        
+
+        params = (
+            key_id,
+            file_data["user_id"],
+            file_data["framework_id"],
+            file_data["name"],
+            file_data["type"],
+            file_data["size"],
+            file_data.get("original_dimension"),
+            file_data.get("encrypted_dimension"),
+            file_data.get("decrypted_dimension"),
+            file_data["path"],
+            "Encrypted",
+            file_data["orig_hash"],
+            file_data["enc_hash"],
+            file_data["payload"],
+            file_data["iv"]
+        )
+
         cursor.execute(query_file, params)
+
         file_id = cursor.lastrowid
         conn.commit()
         return file_id
+
     except sqlite3.Error as e:
         print(f"Eroare DB: {e}")
         conn.rollback()
+        return None
+
     finally:
         conn.close()
 
@@ -246,10 +314,31 @@ def get_performance_report():
     conn = get_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+
     query = """
-    SELECT F.file_name, A.alg_name, FW.framework_name as fw_name, P.operation_type, K.private_key,
-           P.time_exec_ms as time, P.memory_peak_kb as mem
-           
+    SELECT 
+        F.id AS file_id,
+        F.file_name,
+        F.en_status,
+        F.dimension,
+        F.original_dimension,
+        F.encrypted_dimension,
+        F.decrypted_dimension,
+
+        A.alg_name,
+
+        FW.framework_name AS fw_name,
+
+        P.operation_type,
+        P.time_exec_ms AS time,
+        P.memory_peak_kb AS mem,
+        P.input_bytes,
+        P.output_bytes,
+        P.time_per_byte,
+        P.memory_per_byte,
+
+        K.private_key
+
     FROM Performance P
     JOIN File F ON P.id_file = F.id
     JOIN Algorithm A ON P.id_algorithm = A.id
@@ -257,21 +346,73 @@ def get_performance_report():
     JOIN Keys K ON F.id_key = K.id
     ORDER BY P.id DESC
     """
+
     cursor.execute(query)
     rows = cursor.fetchall()
     conn.close()
     return rows
 
-def log_test_performance(perf_data):
-    """CREATE: test."""
+def update_decrypted_file_size(file_id, decrypted_dimension):
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE File
+        SET decrypted_dimension = ?, en_status = ?
+        WHERE id = ?
+        """,
+        (decrypted_dimension, "Decrypted", file_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+def log_test_performance(perf_data):
+    """CREATE: salvare performanta criptare/decriptare."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    input_bytes = perf_data.get("input_bytes", 0) or 0
+    output_bytes = perf_data.get("output_bytes", 0) or 0
+
+    reference_bytes = max(input_bytes, 1)
+
+    time_per_byte = perf_data["time"] / reference_bytes
+    memory_per_byte = perf_data["mem"] / reference_bytes
+
     query = """
-    INSERT INTO Performance (id_file, id_algorithm, id_framework, operation_type, time_exec_ms, memory_peak_kb)
-    VALUES (?,?,?,?,?,?)
+    INSERT INTO Performance (
+        id_file,
+        id_algorithm,
+        id_framework,
+        operation_type,
+        time_exec_ms,
+        memory_peak_kb,
+        input_bytes,
+        output_bytes,
+        time_per_byte,
+        memory_per_byte
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
-    cursor.execute(query, (perf_data['f_id'], perf_data['a_id'], perf_data['fw_id'], 
-                           perf_data['op'], perf_data['time'], perf_data['mem']))
+
+    cursor.execute(
+        query,
+        (
+            perf_data["f_id"],
+            perf_data["a_id"],
+            perf_data["fw_id"],
+            perf_data["op"],
+            perf_data["time"],
+            perf_data["mem"],
+            input_bytes,
+            output_bytes,
+            time_per_byte,
+            memory_per_byte
+        )
+    )
+
     conn.commit()
     conn.close()
 
