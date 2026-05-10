@@ -12,6 +12,7 @@ from gui.dashboard_view import render_dashboard
 from gui.encrypt_view import render_encrypt_form
 from gui.decrypt_view import render_decrypt_form
 
+
 class CryptoApp(ctk.CTk):
     def __init__(self):
         super().__init__()
