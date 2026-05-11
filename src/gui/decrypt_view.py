@@ -51,6 +51,7 @@ def handle_decryption(app):
         return
 
     selected_fw = app.fw_menu.get()
+    fw_db_name = "Python Cryptography" if selected_fw == "Py. Crypt." else selected_fw
 
     tracker = PerformanceTracker()
     tracker.start()
@@ -102,7 +103,7 @@ def handle_decryption(app):
         success = result.returncode == 0
         error_msg = result.stderr if not success else ""
 
-    elif selected_fw == "Python Cryptography":
+    elif selected_fw == "Py. Crypt.":
         if is_rsa:
             messagebox.showwarning(
                 "Info",
@@ -156,11 +157,11 @@ def handle_decryption(app):
 
         fw_version = (
             cryptography.__version__
-            if selected_fw == "Python Cryptography"
+            if selected_fw == "Py. Crypt."
             else "3.0.x"
         )
 
-        fwid = db.register_framework(selected_fw, fw_version)
+        fwid = db.register_framework(fw_db_name, fw_version)
 
         db.log_test_performance({
     "f_id": file_id,
@@ -228,7 +229,7 @@ def render_decrypt_form(app):
 
     app.fw_menu = ctk.CTkOptionMenu(
         app.main_view,
-        values=["OpenSSL", "Python Cryptography"]
+        values=["OpenSSL", "Py. Crypt."]
     )
     app.fw_menu.pack(pady=10)
 

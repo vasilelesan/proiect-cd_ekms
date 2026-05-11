@@ -4,14 +4,10 @@ import os
 import sqlite3
 
 def get_connection():
-    # 1. exatregere cale pentu fisierul curent (db_manager.py)
+    # exatregere cale pentu fisierul curent (db_manager.py)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # 2. Construim calea către baza de date plecând de la folderul 'db'
-    # Dacă structura ta este: src/db/db_manager.py și src/database/ekms.db
-    # Atunci mergem un nivel sus (..) și apoi în database
-    #db_path = os.path.abspath(os.path.join(current_dir, "..", ".." "database", "ekms.db"))
-    # go up to 'src'
+    # construire cale catre baza de date (project_root/database/ekms.db)
     src_dir = os.path.dirname(current_dir)
     
     # go up to project root
@@ -20,10 +16,10 @@ def get_connection():
     # build path to database folder
     db_path = os.path.join(root_dir, "database", "ekms.db")
     
-    # 3. initializare director database
+    #  initializare director database
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
-    # 4. conectare la baza de date
+    # conectare la baza de date
     try:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -310,6 +306,30 @@ def delete_file_and_key(file_id):
         conn.close()
     return False
 
+
+def delete_file_only(file_id):
+    """DELETE: Sterge doar fisierul din DB si logurile de performanta asociate.
+    Cheia ramane salvata in baza de date.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM Performance WHERE id_file = ?", (file_id,))
+        cursor.execute("DELETE FROM File WHERE id = ?", (file_id,))
+
+        conn.commit()
+        return True
+
+    except sqlite3.Error as e:
+        print(f"Eroare la stergerea fisierului: {e}")
+        conn.rollback()
+        return False
+
+    finally:
+        conn.close()
+
+
 def get_performance_report():
     conn = get_connection()
     conn.row_factory = sqlite3.Row
@@ -423,6 +443,64 @@ def get_all_keys():
     cursor = conn.cursor()
     # fetch id and private_key
     cursor.execute("SELECT id, private_key, public_key FROM Keys")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+
+def delete_abandoned_keys():
+    """DELETE: sterge cheile care nu mai sunt asociate niciunui fisier."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            DELETE FROM Keys
+            WHERE id IN (
+                SELECT K.id
+                FROM Keys K
+                LEFT JOIN File F ON F.id_key = K.id
+                WHERE F.id IS NULL
+            )
+            """
+        )
+
+        deleted_count = cursor.rowcount
+        conn.commit()
+        return deleted_count
+
+    except sqlite3.Error as e:
+        print(f"Eroare la stergerea cheilor abandonate: {e}")
+        conn.rollback()
+        return -1
+
+    finally:
+        conn.close()
+
+
+def get_abandoned_keys():
+    """READ: returneaza cheile care nu mai sunt asociate niciunui fisier."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    query = """
+    SELECT 
+        K.id,
+        K.private_key,
+        K.public_key,
+        K.creation_date,
+        A.alg_name
+    FROM Keys K
+    LEFT JOIN File F ON F.id_key = K.id
+    LEFT JOIN Algorithm A ON K.id_algorithm = A.id
+    WHERE F.id IS NULL
+    ORDER BY K.id DESC
+    """
+
+    cursor.execute(query)
     rows = cursor.fetchall()
     conn.close()
     return rows

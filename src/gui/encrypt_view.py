@@ -91,6 +91,7 @@ def handle_encryption(app):
     orig_hash = get_file_hash(app.selected_file_path)
 
     selected_fw = app.fw_menu.get()
+    fw_db_name = "Python Cryptography" if selected_fw == "Py. Crypt." else selected_fw
 
     tracker = PerformanceTracker()
     tracker.start()
@@ -145,7 +146,7 @@ def handle_encryption(app):
         error_msg = result.stderr if not success else ""
         fw_version = "3.0.x"
 
-    elif selected_fw == "Python Cryptography":
+    elif selected_fw == "Py. Crypt.":
         if is_rsa:
             messagebox.showwarning(
                 "Info",
@@ -200,7 +201,7 @@ def handle_encryption(app):
             128 if not is_rsa else 0
         )
 
-        fwid = db.register_framework(selected_fw, fw_version)
+        fwid = db.register_framework(fw_db_name, fw_version)
 
         file_data = {
     "user_id": 1,
@@ -352,7 +353,7 @@ def render_encrypt_form(app):
 
     app.fw_menu = ctk.CTkOptionMenu(
         app.main_view,
-        values=["OpenSSL", "Python Cryptography"]
+        values=["OpenSSL", "Py. Crypt."]
     )
     app.fw_menu.pack(pady=10)
 
