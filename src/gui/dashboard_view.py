@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox
-
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from db import db_manager as db
 
 def format_operation_name(name):
@@ -64,7 +65,7 @@ def render_dashboard(app):
         "Timp",
         "ms/KB",
         "Memorie",
-        "KB/KB",
+        "Mem/KB",
         "Actiuni"
     ]
 
@@ -144,6 +145,8 @@ def render_dashboard(app):
             command=lambda fid=log["file_id"]: handle_delete(app, fid)
         ).grid(row=0, column=1, padx=2)
 
+    render_performance_charts(app, logs)
+
 def handle_delete(app, fid):
     confirm = messagebox.askyesno(
         "Confirmare stergere",
@@ -218,7 +221,7 @@ def handle_delete_abandoned_keys(app):
         )
 
     app.render_dashboard()
-    
+
 
 def format_size(bytes_value):
     if bytes_value is None:
@@ -239,4 +242,128 @@ def format_memory_per_kb(memory_per_byte):
     if memory_per_byte is None:
         return "-"
 
-    return f"{memory_per_byte * 1024:.4f}"
+    return f"{memory_per_byte * 1024:.4f} KB"
+
+
+def is_aes_log(log):
+    return "aes" in log["alg_name"].lower()
+
+
+def is_rsa_log(log):
+    return "rsa" in log["alg_name"].lower()
+
+
+def get_framework_short_name(log):
+    fw_name = log["fw_name"]
+
+    if fw_name == "Python Cryptography":
+        return "Py. Crypt."
+
+    return fw_name
+
+
+def get_operation_short_name(log):
+    operation = log["operation_type"]
+
+    operation = operation.replace("Python Cryptography", "Py. Crypt.")
+    operation = operation.replace("Criptare", "Cript.")
+    operation = operation.replace("Decriptare", "Decript.")
+
+    return operation
+
+
+def build_chart_label(log):
+    framework = get_framework_short_name(log)
+    operation = get_operation_short_name(log)
+
+    return f"{framework}\n{operation}"
+
+
+def render_performance_charts(app, logs):
+    if not logs:
+        return
+
+    chart_frame = ctk.CTkFrame(app.main_view)
+    chart_frame.pack(fill="both", expand=True, padx=10, pady=20)
+
+    ctk.CTkLabel(
+        chart_frame,
+        text="Grafice performanță",
+        font=("Arial", 20, "bold")
+    ).pack(pady=10)
+
+    aes_logs = [log for log in logs if is_aes_log(log)]
+    rsa_logs = [log for log in logs if is_rsa_log(log)]
+
+    if aes_logs:
+        ctk.CTkLabel(
+            chart_frame,
+            text="AES - comparație între framework-uri",
+            font=("Arial", 17, "bold")
+        ).pack(pady=(15, 5))
+
+        render_algorithm_charts(chart_frame, aes_logs, "AES")
+
+    if rsa_logs:
+        ctk.CTkLabel(
+            chart_frame,
+            text="RSA - comparație între framework-uri",
+            font=("Arial", 17, "bold")
+        ).pack(pady=(20, 5))
+
+        render_algorithm_charts(chart_frame, rsa_logs, "RSA")
+
+
+def render_algorithm_charts(parent, logs, algorithm_name):
+    # Luăm ultimele 10 operații pentru algoritmul respectiv,
+    # ca să nu se aglomereze graficul.
+    logs = logs[:10]
+
+    labels = []
+    total_times = []
+    time_per_kb_values = []
+
+    for log in logs:
+        labels.append(build_chart_label(log))
+        total_times.append(log["time"] or 0)
+
+        if log["time_per_byte"] is not None:
+            time_per_kb_values.append(log["time_per_byte"] * 1024)
+        else:
+            time_per_kb_values.append(0)
+
+    create_bar_chart(
+        parent,
+        f"{algorithm_name} - timp total de execuție",
+        labels,
+        total_times,
+        "Timp (ms)"
+    )
+
+    create_bar_chart(
+        parent,
+        f"{algorithm_name} - timp raportat la dimensiunea fișierului",
+        labels,
+        time_per_kb_values,
+        "Timp (ms/KB)"
+    )
+
+
+def create_bar_chart(parent, title, labels, values, y_label):
+    chart_container = ctk.CTkFrame(parent)
+    chart_container.pack(fill="both", expand=True, padx=10, pady=15)
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    ax.bar(labels, values)
+    ax.set_title(title)
+    ax.set_ylabel(y_label)
+    ax.tick_params(axis="x", labelrotation=35)
+
+    fig.tight_layout()
+
+    canvas = FigureCanvasTkAgg(fig, master=chart_container)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    plt.close(fig)
