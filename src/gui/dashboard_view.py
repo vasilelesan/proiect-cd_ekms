@@ -227,9 +227,13 @@ def format_size(bytes_value):
     if bytes_value is None:
         return "-"
 
-    kb = float(bytes_value) / 1024
-    return f"{kb:.2f} KB"
+    bytes_value = float(bytes_value)
 
+    if bytes_value < 1024:
+        return f"{bytes_value:.0f} B"
+
+    kb = bytes_value / 1024
+    return f"{kb:.2f} KB"
 
 def format_time_per_kb(time_per_byte):
     if time_per_byte is None:
